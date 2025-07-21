@@ -35,6 +35,7 @@ study-go-controller/
 │   ├── utils/                   # 🛠️ 공통 유틸리티 함수
 │   └── validator/               # ✅ 공통 검증 로직
 ├── configs/                     # ⚙️ 설정 파일
+├── docs/                        # 📖 문서
 ├── go.mod                       # 📦 Go 모듈 정의
 ├── go.sum                       # 🔒 의존성 잠금 파일
 └── README.md                    # 📖 프로젝트 문서
@@ -66,6 +67,131 @@ study-go-controller/
 📁 pkg/             ← 여러 도메인에서 공통 사용
 📁 cmd/             ← 애플리케이션 진입점
 ```
+
+## 📦 패키지 의존성 가이드
+
+> 💡 **상세한 패키지 의존성 문서**: [docs/package-dependencies.md](docs/package-dependencies.md)
+
+### 🔗 의존성 계층 구조
+
+```
+                cmd/server/main.go
+                       |
+            ┌─────────────────────────┐
+            |                         |
+      pkg/database              internal/domain/
+            |                         |
+    ┌───────┴───────┐         ┌───────┴───────┐
+    |               |         |               |
+  user/entity   post/entity   user/         post/
+                              domain        domain
+```
+
+### 🎯 **핵심 의존성 규칙**
+
+#### ✅ **허용되는 의존성 방향**
+```
+cmd → pkg → external libraries
+cmd → internal → pkg → external libraries
+internal/domain/A → internal/domain/B (DTO만)
+Handler → Service → Repository → Entity
+```
+
+#### ❌ **금지되는 의존성 방향**
+```
+pkg → internal (pkg는 internal을 참조할 수 없음)
+Repository → Service (계층 역전 금지)
+Entity → Service (도메인 모델이 서비스에 의존 금지)
+```
+
+### 📋 **주요 패키지별 역할**
+
+#### 🔷 **cmd/server/main.go**
+```go
+역할: 애플리케이션 부트스트랩 및 의존성 주입
+의존성:
+├── pkg/database → 데이터베이스 초기화
+├── internal/domain/*/repository → 리포지토리 생성
+├── internal/domain/*/service → 서비스 생성
+├── internal/domain/*/handler → 핸들러 생성
+└── internal/domain/*/routes → 라우터 설정
+```
+
+#### 🔷 **internal/domain/user/**
+
+| 계층 | 파일 | 의존성 | 역할 |
+|------|------|--------|------|
+| **Entity** | `entity/user.go` | `gorm.io/gorm` | User 도메인 모델 |
+| **Repository** | `repository/user_repository.go` | `entity` + `gorm` | 데이터 액세스 |
+| **Service** | `service/user_service.go` | `repository` + `entity` + `bcrypt` | 비즈니스 로직 |
+| **Handler** | `handler/user_handler.go` | `service` + `dto` + `pkg/response` | HTTP 처리 |
+| **DTO** | `dto/user_dto.go` | `entity` | API 요청/응답 |
+| **Enums** | `enums/user_enums.go` | 없음 | User 특화 열거형 |
+| **Routes** | `routes/user_routes.go` | `handler` + `gin` | API 라우팅 |
+
+#### 🔷 **internal/domain/post/**
+
+| 계층 | 파일 | 의존성 | 역할 |
+|------|------|--------|------|
+| **Entity** | `entity/post.go` | `gorm` + `user/entity` | Post 도메인 모델 |
+| **Repository** | `repository/post_repository.go` | `entity` + `gorm` | 데이터 액세스 |
+| **Service** | `service/post_service.go` | `repository` + `entity` | 비즈니스 로직 |
+| **Handler** | `handler/post_handler.go` | `service` + `dto` + `pkg/response` | HTTP 처리 |
+| **DTO** | `dto/post_dto.go` | `entity` + `user/dto` | API 요청/응답 |
+| **Enums** | `enums/post_enums.go` | 없음 | Post 특화 열거형 |
+| **Routes** | `routes/post_routes.go` | `handler` + `gin` | API 라우팅 |
+
+#### 🔷 **pkg/** (공통 패키지)
+
+| 패키지 | 역할 | 사용처 | 의존성 |
+|--------|------|--------|--------|
+| **database** | DB 연결 관리 | `cmd/server/main.go` | `gorm` + `entity` |
+| **response** | API 응답 표준화 | 모든 `handler` | `gin` |
+| **models** | 공통 모델 | 모든 `entity`, `handler` | `gorm` |
+| **enums** | 공통 열거형 | 모든 도메인 | 없음 |
+| **utils** | 유틸리티 함수 | `service`, `validator` | 표준 라이브러리 |
+| **validator** | 공통 검증 | `service`, `handler` | 표준 라이브러리 |
+
+### 🔄 **도메인 간 통신 패턴**
+
+#### ✅ **올바른 패턴**
+```go
+// 1. DTO 레벨에서 다른 도메인 참조 (읽기 전용)
+type PostResponse struct {
+    Author *userDto.UserResponse `json:"author,omitempty"`
+}
+
+// 2. 서비스에서 필요한 경우 다른 도메인 서비스 호출
+func (s *postService) CreatePost(authorID uint) {
+    user, err := s.userService.GetUserByID(authorID)
+    // 비즈니스 로직...
+}
+```
+
+#### ❌ **피해야 할 패턴**
+```go
+// Repository에서 다른 도메인 접근
+func (r *postRepository) GetWithAuthor() {
+    // ❌ Bad: Repository가 다른 도메인 접근
+    userRepo.GetByID(post.AuthorID)
+}
+
+// Entity에서 비즈니스 로직
+func (p *Post) ValidateAuthor() {
+    // ❌ Bad: Entity에 비즈니스 로직
+    userService.IsActive(p.AuthorID)
+}
+```
+
+### 📊 **패키지 복잡도 가이드라인**
+
+| 계층 | 권장 크기 | 복잡도 신호 |
+|------|-----------|-------------|
+| **Entity** | 50-150 lines | 비즈니스 로직 포함 시 |
+| **Repository** | 100-300 lines | 5개 이상 의존성 |
+| **Service** | 200-500 lines | 순환 의존성 발생 |
+| **Handler** | 150-400 lines | 테스트 작성 어려움 |
+| **DTO** | 100-250 lines | 변환 로직 복잡화 |
 
 ## 📋 패키지별 역할과 사용처
 
