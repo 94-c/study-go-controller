@@ -1,0 +1,14 @@
+# Server Configuration
+PORT=8080
+GIN_MODE=debug
+
+# Database Configuration
+DB_HOST=localhost
+DB_PORT=3306
+DB_USER=root
+DB_PASSWORD=your_password
+DB_NAME=study_go_controller
+
+# JWT Configuration (for future use)
+JWT_SECRET=your_super_secret_jwt_key_here
+JWT_EXPIRY=24h 
