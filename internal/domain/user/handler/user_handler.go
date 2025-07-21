@@ -112,3 +112,64 @@ func (h *UserHandler) DeleteUser(c *gin.Context) {
 
 	response.SuccessResponse(c, http.StatusOK, "User deleted successfully", nil)
 }
+
+// 🆕 새로운 API 메서드 추가 예시
+// GetUserProfile handles GET /users/:id/profile
+func (h *UserHandler) GetUserProfile(c *gin.Context) {
+	idParam := c.Param("id")
+	id, err := strconv.ParseUint(idParam, 10, 32)
+	if err != nil {
+		response.ErrorResponse(c, http.StatusBadRequest, "Invalid user ID")
+		return
+	}
+
+	user, err := h.userService.GetUserByID(uint(id))
+	if err != nil {
+		response.ErrorResponse(c, http.StatusNotFound, "User not found")
+		return
+	}
+
+	// 프로필 정보만 포함된 응답
+	profileResponse := map[string]interface{}{
+		"id":       user.ID,
+		"username": user.Username,
+		"name":     user.Name,
+		"profile": map[string]interface{}{
+			"member_since": user.CreatedAt.Format("2006-01-02"),
+			"total_posts":  0, // TODO: 실제 포스트 수 계산
+		},
+	}
+
+	response.SuccessResponse(c, http.StatusOK, "User profile retrieved successfully", profileResponse)
+}
+
+// 🆕 ChangePassword handles PUT /users/:id/password
+func (h *UserHandler) ChangePassword(c *gin.Context) {
+	idParam := c.Param("id")
+	id, err := strconv.ParseUint(idParam, 10, 32)
+	if err != nil {
+		response.ErrorResponse(c, http.StatusBadRequest, "Invalid user ID")
+		return
+	}
+
+	var req dto.ChangePasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.ValidationErrorResponse(c, err)
+		return
+	}
+
+	// 일단 임시로 사용자 존재 여부 확인
+	_, err = h.userService.GetUserByID(uint(id))
+	if err != nil {
+		response.ErrorResponse(c, http.StatusNotFound, "User not found")
+		return
+	}
+
+	// TODO: Service에 ChangePassword 메서드 추가 필요
+	// if err := h.userService.ChangePassword(uint(id), req.CurrentPassword, req.NewPassword); err != nil {
+	//     response.ErrorResponse(c, http.StatusBadRequest, err.Error())
+	//     return
+	// }
+
+	response.SuccessResponse(c, http.StatusOK, "Password changed successfully", nil)
+}

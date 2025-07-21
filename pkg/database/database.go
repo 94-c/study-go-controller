@@ -6,6 +6,10 @@ import (
 	postEntity "study-go-controller/internal/domain/post/entity"
 	"study-go-controller/internal/domain/user/entity"
 
+	// "gorm.io/driver/mysql" 패키지를 찾을 수 없다는 에러가 발생하므로, go.mod 파일에 해당 모듈을 추가해야 합니다.
+	// 터미널에서 다음 명령어를 실행하여 모듈을 설치하세요:
+	// go get gorm.io/driver/mysql
+
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"

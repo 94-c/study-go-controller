@@ -3,15 +3,7 @@ package main
 import (
 	"log"
 	"os"
-	"study-go-controller/internal/domain/post/handler"
-	postRepo "study-go-controller/internal/domain/post/repository"
-	"study-go-controller/internal/domain/post/routes"
-	postService "study-go-controller/internal/domain/post/service"
-	userHandler "study-go-controller/internal/domain/user/handler"
-	userRepo "study-go-controller/internal/domain/user/repository"
-	userRoutes "study-go-controller/internal/domain/user/routes"
-	userService "study-go-controller/internal/domain/user/service"
-	"study-go-controller/pkg/database"
+	"study-go-controller/pkg/container"
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
@@ -23,45 +15,26 @@ func main() {
 		log.Println("No .env file found")
 	}
 
-	// Initialize database
-	db, err := database.NewDatabase()
+	// Initialize DI container with automatic route registration
+	c, err := container.NewContainer()
 	if err != nil {
-		log.Fatal("Failed to connect to database:", err)
+		log.Fatal("Failed to initialize container:", err)
 	}
-	defer db.Close()
-
-	// Run migrations
-	if err := db.AutoMigrate(); err != nil {
-		log.Fatal("Failed to run migrations:", err)
-	}
-
-	// Initialize repositories
-	userRepository := userRepo.NewUserRepository(db.DB)
-	postRepository := postRepo.NewPostRepository(db.DB)
-
-	// Initialize services
-	userSvc := userService.NewUserService(userRepository)
-	postSvc := postService.NewPostService(postRepository)
-
-	// Initialize handlers
-	userHdl := userHandler.NewUserHandler(userSvc)
-	postHdl := handler.NewPostHandler(postSvc)
 
 	// Initialize Gin router
 	router := gin.Default()
 
-	// API version grouping
-	v1 := router.Group("/api/v1")
-
-	// Setup domain routes
-	userRoutes.SetupUserRoutes(v1, userHdl)
-	routes.SetupPostRoutes(v1, postHdl)
+	// 🚀 Register all routes automatically
+	c.RegisterRoutes(router)
 
 	// Health check endpoint
-	router.GET("/health", func(c *gin.Context) {
-		c.JSON(200, gin.H{
-			"status":  "ok",
-			"message": "Server is running",
+	router.GET("/health", func(ctx *gin.Context) {
+		registeredRoutes := c.GetRegisteredRoutes()
+		ctx.JSON(200, gin.H{
+			"status":       "ok",
+			"message":      "Server is running with automatic routing",
+			"total_routes": len(registeredRoutes),
+			"auto_routes":  registeredRoutes,
 		})
 	})
 
@@ -71,7 +44,15 @@ func main() {
 		port = "8080"
 	}
 
-	log.Printf("Server starting on port %s", port)
+	// Print registered routes for debugging
+	routes := c.GetRegisteredRoutes()
+	log.Println("\n🚀 ===== AUTOMATIC ROUTE REGISTRATION SUMMARY =====")
+	for _, route := range routes {
+		log.Printf("   %s %s", route.Method, route.Path)
+	}
+	log.Printf("📡 Total: %d routes automatically registered\n", len(routes))
+
+	log.Printf("🌟 Server starting on port %s with automatic routing enabled!", port)
 	if err := router.Run(":" + port); err != nil {
 		log.Fatal("Failed to start server:", err)
 	}
